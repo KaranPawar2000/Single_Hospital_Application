@@ -1,6 +1,7 @@
 package com.hospital_single_app.demo.service;
 
 import com.hospital_single_app.demo.dto.PatientDTO;
+import com.hospital_single_app.demo.dto.PhoneVerifyDTO;
 import com.hospital_single_app.demo.entity.TbPatient;
 import com.hospital_single_app.demo.repo.PatientRepository;
 import jakarta.transaction.Transactional;
@@ -8,6 +9,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
+
+import java.util.List;
+import java.util.stream.Collectors;
 
 
 @Service
@@ -61,8 +65,44 @@ public class PatientService {
         return patientRepo.save(p);
     }
 
+    public TbPatient updatePatient(Long id, PatientDTO dto) {
+
+        TbPatient p = patientRepo.findById(id)
+                .orElseThrow(() -> new RuntimeException("Patient not found"));
+
+        p.setFullName(dto.getFullName());
+        p.setPhone(dto.getPhone());
+        p.setGender(dto.getGender());
+        p.setDob(dto.getDob());
+        p.setAddress(dto.getAddress());
+        p.setStatus(dto.getStatus());
 
 
+        return patientRepo.save(p);
+    }
+
+    public List<PatientDTO> getAllPatients() {
+        return patientRepo.findAll()
+                .stream()
+                .map(this::toDTO)
+                .collect(Collectors.toList());
+    }
+
+    public PatientDTO getPatientById(Long id) {
+
+        TbPatient p = patientRepo.findById(id)
+                .orElseThrow(() -> new RuntimeException("Patient not found"));
+
+        return toDTO(p);
+    }
+
+    public PatientDTO getByPhone(String phone) {
+
+        TbPatient patient = patientRepo.findByPhone(phone)
+                .orElseThrow(() -> new RuntimeException("Patient not found with phone: " + phone));
+
+        return toDTO(patient);
+    }
 
 
 }
