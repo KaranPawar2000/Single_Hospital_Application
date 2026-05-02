@@ -292,6 +292,13 @@ public class WhatsAppService {
                     "id": "APPOINTMENT",
                     "title": "Appointment"
                   }
+                },
+                 {
+                   "type": "reply",
+                   "reply": {
+                   "id": "ADDRESS",
+                   "title": "Address"
+                   }
                 }
               ]
             }
@@ -322,6 +329,13 @@ public class WhatsAppService {
                     "id": "REGISTER",
                     "title": "Register"
                   }
+                },
+                {
+                   "type": "reply",
+                   reply": {
+                   "id": "ADDRESS",
+                   "title": "Address"
+                   }
                 }
               ]
             }
