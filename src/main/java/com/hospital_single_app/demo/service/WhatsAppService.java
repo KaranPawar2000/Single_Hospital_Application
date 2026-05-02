@@ -1,15 +1,19 @@
 package com.hospital_single_app.demo.service;
 
+import com.hospital_single_app.demo.dto.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.time.LocalDate;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class WhatsAppService {
+
+    private final ChatFlowService chatFlowService;
 
     @Value("${whatsapp.token}")
     private String token;
@@ -19,9 +23,15 @@ public class WhatsAppService {
 
     private final RestTemplate restTemplate = new RestTemplate();
 
-    // 🧠 Simple memory
-    private final Map<String, String> userDate = new HashMap<>();
-    private final Map<String, String> userSlot = new HashMap<>();
+    // 🧠 MEMORY
+    private final Map<String, String> userState = new HashMap<>();
+    private final Map<String, PatientDTO> userData = new HashMap<>();
+
+    private final Map<String, LocalDate> userSelectedDate = new HashMap<>();
+
+    public WhatsAppService(ChatFlowService chatFlowService) {
+        this.chatFlowService = chatFlowService;
+    }
 
     public void handleMessage(String from, String message) {
 
@@ -29,37 +39,49 @@ public class WhatsAppService {
 
         System.out.println("FROM: " + from + " MESSAGE: " + message);
 
-        message = message.trim().toUpperCase();
+        message = message.trim();
+
+        // 🔥 STEP 1: HANDLE REGISTRATION FLOW
+        String state = userState.get(from);
+        if (state != null) {
+            handleRegistrationFlow(from, message, state);
+            return;
+        }
+
+        // 🔥 STEP 2: HANDLE DYNAMIC ACTIONS
+        if (message.startsWith("DATE_")) {
+            LocalDate date = LocalDate.parse(message.replace("DATE_", ""));
+            userSelectedDate.put(from, date);
+            sendAvailableSlots(from, date);
+            return;
+        }
+
+        if (message.startsWith("SLOT_")) {
+            handleSlotSelection(from, message);
+            return;
+        }
+
+        message = message.toUpperCase();
 
         switch (message) {
 
             case "HI":
-                sendWelcomeButtons(from);
+                PatientDTO patient = chatFlowService.getPatient(from);
+
+                if (patient != null) {
+                    sendWelcomeButtons(from, patient.getFullName());
+                } else {
+                    sendDefaultButtons(from);
+                }
                 break;
 
-            case "OLD_PATIENT":
-                System.out.println("➡️ Sending date list");
-                sendDateList(from);
+            case "REGISTER":
+                userState.put(from, "ASK_NAME");
+                sendText(from, "Enter your full name:");
                 break;
 
-            case "DATE_1":
-            case "DATE_2":
-            case "DATE_3":
-                userDate.put(from, message);
-                sendSlotList(from);
-                break;
-
-            case "SLOT_1":
-            case "SLOT_2":
-            case "SLOT_3":
-
-                userSlot.put(from, message);
-
-                String date = userDate.get(from);
-                String slot = userSlot.get(from);
-
-                sendText(from,
-                        "✅ Booking Confirmed\nDate: " + date + "\nSlot: " + slot);
+            case "APPOINTMENT":
+                sendDynamicDateList(from);
                 break;
 
             default:
@@ -67,84 +89,80 @@ public class WhatsAppService {
         }
     }
 
-    // ✅ FIXED TEXT MESSAGE
-//    private void sendText(String to, String message) {
-//
-//        // escape quotes
-//        message = message.replace("\"", "\\\"");
-//
-//        String body = String.format(
-//                "{ \"messaging_product\": \"whatsapp\", " +
-//                        "\"to\": \"%s\", " +
-//                        "\"type\": \"text\", " +
-//                        "\"text\": { \"body\": \"%s\" } }",
-//                to, message
-//        );
-//
-//        send(body);
-//    }
+    // ================= REGISTRATION =================
 
+    private void handleRegistrationFlow(String from, String message, String state) {
 
-    private void sendText(String to, String message) {
+        PatientDTO dto = userData.getOrDefault(from, new PatientDTO());
 
-        // 🔥 CRITICAL FIX
-        message = message
-                .replace("\"", "\\\"")   // escape quotes
-                .replace("\n", "\\n");   // escape newline
+        switch (state) {
 
-        String body = String.format(
-                "{ \"messaging_product\": \"whatsapp\", " +
-                        "\"to\": \"%s\", " +
-                        "\"type\": \"text\", " +
-                        "\"text\": { \"body\": \"%s\" } }",
-                to, message
-        );
+            case "ASK_NAME":
+                dto.setFullName(message);
+                userData.put(from, dto);
 
-        send(body);
-    }
+                userState.put(from, "ASK_GENDER");
+                sendGenderButtons(from);
+                break;
 
-    // 🔹 BUTTON
-    private void sendWelcomeButtons(String to) {
+            case "ASK_GENDER":
+                dto.setGender(message);
+                userData.put(from, dto);
 
-        String body = """
-        {
-          "messaging_product": "whatsapp",
-          "to": "%s",
-          "type": "interactive",
-          "interactive": {
-            "type": "button",
-            "body": {
-              "text": "Welcome to Demo Hospital 🏥"
-            },
-            "action": {
-              "buttons": [
-                {
-                  "type": "reply",
-                  "reply": {
-                    "id": "NEW_PATIENT",
-                    "title": "New Patient"
-                  }
-                },
-                {
-                  "type": "reply",
-                  "reply": {
-                    "id": "OLD_PATIENT",
-                    "title": "Old Patient"
-                  }
-                }
-              ]
-            }
-          }
+                userState.put(from, "ASK_ADDRESS");
+                sendText(from, "Enter your address:");
+                break;
+
+            case "ASK_ADDRESS":
+                dto.setAddress(message);
+
+                String phone = from.substring(2);
+                dto.setPhone(phone);
+
+                chatFlowService.savePatient(dto);
+
+                userState.remove(from);
+                userData.remove(from);
+
+                sendText(from, "✅ Registration completed!");
+                break;
         }
-        """.formatted(to);
-
-        send(body);
     }
 
-    // 🔹 DATE LIST
-    private void sendDateList(String to) {
+    // ================= DATE LIST =================
 
-        System.out.println("🔥 sendDateList CALLED");
+    private void sendDynamicDateList(String to) {
+
+        List<HolidayDTO> holidays = chatFlowService.getAllHolidays();
+
+        Set<LocalDate> holidayDates = holidays.stream()
+                .map(HolidayDTO::getHolidayDate)
+                .collect(Collectors.toSet());
+
+        List<LocalDate> nextDates = new ArrayList<>();
+
+        LocalDate today = LocalDate.now();
+        int count = 0;
+        int i = 0;
+
+        while (count < 10) {
+            LocalDate date = today.plusDays(i);
+
+            if (!holidayDates.contains(date)) {
+                nextDates.add(date);
+                count++;
+            }
+            i++;
+        }
+
+        StringBuilder rows = new StringBuilder();
+
+        for (LocalDate d : nextDates) {
+            rows.append(String.format(
+                    "{ \"id\": \"DATE_%s\", \"title\": \"%s\" },",
+                    d, d
+            ));
+        }
 
         String body = """
         {
@@ -160,24 +178,44 @@ public class WhatsAppService {
               "button": "Choose Date",
               "sections": [
                 {
-                  "title": "Dates",
-                  "rows": [
-                    { "id": "DATE_1", "title": "01 May" },
-                    { "id": "DATE_2", "title": "02 May" },
-                    { "id": "DATE_3", "title": "03 May" }
-                  ]
+                  "title": "Available Dates",
+                  "rows": [%s]
                 }
               ]
             }
           }
         }
-        """.formatted(to);
+        """.formatted(to, rows.substring(0, rows.length() - 1));
 
         send(body);
     }
 
-    // 🔹 SLOT LIST
-    private void sendSlotList(String to) {
+    // ================= SLOT LIST =================
+
+    private void sendAvailableSlots(String to, LocalDate date) {
+
+        List<SlotDTO> slots = chatFlowService.getAllSlots();
+
+        StringBuilder rows = new StringBuilder();
+
+        for (SlotDTO slot : slots) {
+
+            long booked = chatFlowService.getBookedCount(slot.getPkSlotId(), date);
+
+            if (booked < slot.getCapacity()) {
+
+                rows.append(String.format(
+                        "{ \"id\": \"SLOT_%d\", \"title\": \"%s\" },",
+                        slot.getPkSlotId(),
+                        slot.getSlotName()
+                ));
+            }
+        }
+
+        if (rows.length() == 0) {
+            sendText(to, "❌ No slots available");
+            return;
+        }
 
         String body = """
         {
@@ -193,12 +231,97 @@ public class WhatsAppService {
               "button": "Choose Slot",
               "sections": [
                 {
-                  "title": "Slots",
-                  "rows": [
-                    { "id": "SLOT_1", "title": "10:00 AM" },
-                    { "id": "SLOT_2", "title": "12:00 PM" },
-                    { "id": "SLOT_3", "title": "02:00 PM" }
-                  ]
+                  "title": "Available Slots",
+                  "rows": [%s]
+                }
+              ]
+            }
+          }
+        }
+        """.formatted(to, rows.substring(0, rows.length() - 1));
+
+        send(body);
+    }
+
+    // ================= BOOKING =================
+
+    private void handleSlotSelection(String from, String message) {
+
+        Long slotId = Long.parseLong(message.replace("SLOT_", ""));
+        LocalDate date = userSelectedDate.get(from);
+
+        PatientDTO patient = chatFlowService.getPatient(from);
+
+        if (patient == null) {
+            sendText(from, "Please register first");
+            return;
+        }
+
+        BookingDTO dto = new BookingDTO();
+        dto.setPatientId(patient.getPatientId());
+        dto.setBookingDate(date);
+        dto.setSlotId(slotId);
+
+        BookingDTO booking = chatFlowService.createBooking(dto);
+
+        sendText(from,
+                "✅ Booking Confirmed\nDate: " + booking.getBookingDate() +
+                        "\nSlot: " + booking.getSlotName() +
+                        "\nBooking No: " + booking.getBookingNo());
+    }
+
+    // ================= BUTTONS =================
+
+    private void sendWelcomeButtons(String to, String name) {
+
+        String body = """
+        {
+          "messaging_product": "whatsapp",
+          "to": "%s",
+          "type": "interactive",
+          "interactive": {
+            "type": "button",
+            "body": {
+              "text": "Hi %s, Welcome to Clinic 🏥"
+            },
+            "action": {
+              "buttons": [
+                {
+                  "type": "reply",
+                  "reply": {
+                    "id": "APPOINTMENT",
+                    "title": "Appointment"
+                  }
+                }
+              ]
+            }
+          }
+        }
+        """.formatted(to, name);
+
+        send(body);
+    }
+
+    private void sendDefaultButtons(String to) {
+
+        String body = """
+        {
+          "messaging_product": "whatsapp",
+          "to": "%s",
+          "type": "interactive",
+          "interactive": {
+            "type": "button",
+            "body": {
+              "text": "Welcome to Clinic 🏥"
+            },
+            "action": {
+              "buttons": [
+                {
+                  "type": "reply",
+                  "reply": {
+                    "id": "REGISTER",
+                    "title": "Register"
+                  }
                 }
               ]
             }
@@ -209,10 +332,34 @@ public class WhatsAppService {
         send(body);
     }
 
-    // 🔹 COMMON API CALL
-    private void send(String body) {
+    private void sendGenderButtons(String to) {
 
-        System.out.println("REQUEST BODY: " + body);
+        String body = """
+        {
+          "messaging_product": "whatsapp",
+          "to": "%s",
+          "type": "interactive",
+          "interactive": {
+            "type": "button",
+            "body": {
+              "text": "Select Gender"
+            },
+            "action": {
+              "buttons": [
+                { "type": "reply", "reply": { "id": "MALE", "title": "Male" }},
+                { "type": "reply", "reply": { "id": "FEMALE", "title": "Female" }}
+              ]
+            }
+          }
+        }
+        """.formatted(to);
+
+        send(body);
+    }
+
+    // ================= COMMON =================
+
+    private void send(String body) {
 
         String url = "https://graph.facebook.com/v18.0/" + phoneNumberId + "/messages";
 
@@ -222,11 +369,18 @@ public class WhatsAppService {
 
         HttpEntity<String> request = new HttpEntity<>(body, headers);
 
-        ResponseEntity<String> response =
-                restTemplate.postForEntity(url, request, String.class);
+        restTemplate.postForEntity(url, request, String.class);
+    }
 
-        System.out.println("RESPONSE STATUS: " + response.getStatusCode());
-        System.out.println("RESPONSE BODY: " + response.getBody());
+    private void sendText(String to, String message) {
+
+        message = message.replace("\"", "\\\"").replace("\n", "\\n");
+
+        String body = String.format(
+                "{ \"messaging_product\": \"whatsapp\", \"to\": \"%s\", \"type\": \"text\", \"text\": { \"body\": \"%s\" } }",
+                to, message
+        );
+
+        send(body);
     }
 }
-

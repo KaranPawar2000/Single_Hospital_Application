@@ -4,7 +4,8 @@ import lombok.Data;
 import java.time.LocalTime;
 
 @Data
-public class SlotDTO {
+public class
+SlotDTO {
 
     private Long pkSlotId;
 
