@@ -84,6 +84,12 @@ public class WhatsAppService {
                 sendDynamicDateList(from);
                 break;
 
+            case "ADDRESS":
+                sendText(from,
+                        "📍 Our Location:\nhttps://maps.app.goo.gl/RV5HjLZWXpZ9tSQN7?g_st=aw"
+                );
+                break;
+
             default:
                 sendText(from, "Type 'hi' to start");
         }

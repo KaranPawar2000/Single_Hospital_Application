@@ -14,12 +14,27 @@ public class JsonUtil {
             List<Map<String, Object>> messages =
                     (List<Map<String, Object>>) value.get("messages");
 
-            // ✅ IMPORTANT: ignore status events
-            if (messages == null || messages.isEmpty()) {
-                return null;
-            }
+            if (messages == null || messages.isEmpty()) return null;
 
             return (String) messages.get(0).get("from");
+
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    public static String extractMessageId(Map<String, Object> payload) {
+        try {
+            List<Map<String, Object>> entry = (List<Map<String, Object>>) payload.get("entry");
+            Map<String, Object> changes = ((List<Map<String, Object>>) entry.get(0).get("changes")).get(0);
+            Map<String, Object> value = (Map<String, Object>) changes.get("value");
+
+            List<Map<String, Object>> messages =
+                    (List<Map<String, Object>>) value.get("messages");
+
+            if (messages == null || messages.isEmpty()) return null;
+
+            return (String) messages.get(0).get("id");
 
         } catch (Exception e) {
             return null;
@@ -34,16 +49,12 @@ public class JsonUtil {
 
             List messages = (List)value.get("messages");
 
-            // ✅ IMPORTANT: ignore status events
-            if (messages == null || messages.isEmpty()) {
-                return null;
-            }
+            if (messages == null || messages.isEmpty()) return null;
 
             Map msg = (Map)messages.get(0);
 
             System.out.println("FULL MESSAGE OBJECT: " + msg);
 
-            // 🔥 BUTTON / LIST CLICK
             if (msg.containsKey("interactive")) {
                 Map interactive = (Map) msg.get("interactive");
 
@@ -56,7 +67,6 @@ public class JsonUtil {
                 }
             }
 
-            // TEXT
             if (msg.containsKey("text")) {
                 return (String)((Map)msg.get("text")).get("body");
             }

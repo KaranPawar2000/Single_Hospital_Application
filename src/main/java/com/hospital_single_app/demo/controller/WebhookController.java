@@ -7,7 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Map;
+import java.util.*;
 
 @RestController
 @RequestMapping("/webhook")
@@ -18,11 +18,14 @@ public class WebhookController {
 
     private final WhatsAppService whatsAppService;
 
+    // 🔥 IMPORTANT: store processed message IDs
+    private final Set<String> processedMessages = new HashSet<>();
+
     public WebhookController(WhatsAppService whatsAppService) {
         this.whatsAppService = whatsAppService;
     }
 
-    // ✅ Verification API
+    // ✅ Verification
     @GetMapping
     public ResponseEntity<String> verifyWebhook(
             @RequestParam("hub.mode") String mode,
@@ -38,13 +41,34 @@ public class WebhookController {
     // ✅ Receive Message
     @PostMapping
     public ResponseEntity<String> receiveMessage(@RequestBody Map<String, Object> payload) {
-        System.out.println("WEBHOOK DATA: " + payload);
-        String from =
-                JsonUtil.extractPhone(payload);
-        String message = JsonUtil.extractMessage(payload);
 
-        if (from != null && message != null) {
-            whatsAppService.handleMessage(from, message);
+        System.out.println("WEBHOOK DATA: " + payload);
+
+        try {
+            String messageId = JsonUtil.extractMessageId(payload);
+
+            // ❌ ignore if not actual message
+            if (messageId == null) {
+                return ResponseEntity.ok("IGNORED");
+            }
+
+            // 🔥 DUPLICATE FIX
+            if (processedMessages.contains(messageId)) {
+                System.out.println("DUPLICATE MESSAGE IGNORED: " + messageId);
+                return ResponseEntity.ok("DUPLICATE");
+            }
+
+            processedMessages.add(messageId);
+
+            String from = JsonUtil.extractPhone(payload);
+            String message = JsonUtil.extractMessage(payload);
+
+            if (from != null && message != null) {
+                whatsAppService.handleMessage(from, message);
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
         }
 
         return ResponseEntity.ok("EVENT_RECEIVED");
